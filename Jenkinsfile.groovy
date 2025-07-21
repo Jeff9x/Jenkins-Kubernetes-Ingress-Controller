@@ -1,6 +1,16 @@
 // Jenkinsfile
 pipeline {
     agent any
+    tools { 
+         // This name must match the one in Global Tool Configuration
+        docker 'default-docker' 
+    }
+    stages {
+        stage('Build & Push App One') {
+            steps {
+                script {
+                    sh 'docker build -t your-username/app-one ./app-one'
+                    // Add push commands etc.
 
     environment {
         // !! CHANGE THIS VALUE !!
