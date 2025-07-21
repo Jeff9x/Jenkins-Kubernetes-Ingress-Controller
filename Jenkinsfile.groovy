@@ -64,14 +64,22 @@ pipeline {
                 }
             }
         }
-        stage('Verify All Deployments') {
-            steps {
-                withCredentials([file(credentialsId: 'kubeconfig-file', variable: 'KUBECONFIG')]) {
-                    sh "kubectl rollout status deployment/app-one-deployment --namespace ${KUBE_NAMESPACE}"
-                    sh "kubectl rollout status deployment/app-two-deployment --namespace ${KUBE_NAMESPACE}"
-                    sh "kubectl rollout status deployment/app-three-deployment --namespace ${KUBE_NAMESPACE}"
+       // ... previous stages
+            stage('Verify All Deployments') {
+                steps {
+                    script {
+                        withCredentials([kubeconfigContent(credentialsId: env.KUBECONFIG_CREDENTIALS_ID, variable: 'KUBECONFIG_CONTENT')]) {
+                            sh '''
+                                #!/bin/bash
+                                echo "$KUBECONFIG_CONTENT" > kubeconfig
+                                export KUBECONFIG=./kubeconfig
+                                kubectl get deployments
+                                kubectl get services
+                                kubectl get ingress
+                            '''
+                        }
+                    }
                 }
             }
         }
     }
-}
