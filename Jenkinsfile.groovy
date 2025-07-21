@@ -1,23 +1,10 @@
-// Jenkinsfile
 pipeline {
     agent any
-    tools { 
-         // This name must match the one in Global Tool Configuration
-        docker 'default-docker' 
-    }
-    stages {
-        stage('Build & Push App One') {
-            steps {
-                script {
-                    sh 'docker build -t your-username/app-one ./app-one'
-                    // Add push commands etc.
-
     environment {
-        // !! CHANGE THIS VALUE !!
-        DOCKER_HUB_USERNAME = "jeffare9x"
-        KUBE_NAMESPACE = "default"
+        DOCKER_HUB_CREDENTIALS = credentials('docker-hub-credentials')
+        DOCKER_HUB_USERNAME = 'jeff9x'
+        KUBECONFIG_CREDENTIALS_ID = 'kubeconfig'
     }
-
     stages {
         stage('Checkout Code') {
             steps {
@@ -27,10 +14,9 @@ pipeline {
         stage('Build & Push App One') {
             steps {
                 script {
-                    def fullImageName = "${env.jeffare9x}/app-one"
-                    def dockerImage = docker.build(fullImageName, './app-one')
-                    docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-creds') {
-                        dockerImage.push("latest")
+                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub-credentials') {
+                        def appImage = docker.build("${env.DOCKER_HUB_USERNAME}/app-one", './app-one')
+                        appImage.push('latest')
                     }
                 }
             }
@@ -38,10 +24,9 @@ pipeline {
         stage('Build & Push App Two') {
             steps {
                 script {
-                    def fullImageName = "${env.jeffare9x}/app-two"
-                    def dockerImage = docker.build(fullImageName, './app-two')
-                    docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-creds') {
-                        dockerImage.push("latest")
+                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub-credentials') {
+                        def appImage = docker.build("${env.DOCKER_HUB_USERNAME}/app-two", './app-two')
+                        appImage.push('latest')
                     }
                 }
             }
@@ -49,38 +34,45 @@ pipeline {
         stage('Build & Push App Three') {
             steps {
                 script {
-                    def fullImageName = "${env.jeffare9x}/app-three"
-                    def dockerImage = docker.build(fullImageName, './app-three')
-                    docker.withRegistry('https://registry.hub.docker.com', 'docker-hub-creds') {
-                        dockerImage.push("latest")
+                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub-credentials') {
+                        def appImage = docker.build("${env.DOCKER_HUB_USERNAME}/app-three", './app-three')
+                        appImage.push('latest')
                     }
                 }
             }
         }
         stage('Deploy All Apps & Ingress') {
             steps {
-                withCredentials([file(credentialsId: 'kubeconfig-file', variable: 'KUBECONFIG')]) {
-                    sh "kubectl apply -f k8s/deployment.yaml --namespace ${KUBE_NAMESPACE}"
-                }
-            }
-        }
-       // ... previous stages
-            stage('Verify All Deployments') {
-                steps {
-                    script {
-                        withCredentials([kubeconfigContent(credentialsId: env.KUBECONFIG_CREDENTIALS_ID, variable: 'KUBECONFIG_CONTENT')]) {
-                            sh '''
-                                #!/bin/bash
-                                echo "$KUBECONFIG_CONTENT" > kubeconfig
-                                export KUBECONFIG=./kubeconfig
-                                kubectl get deployments
-                                kubectl get services
-                                kubectl get ingress
-                            '''
-                        }
+                script {
+                    withCredentials([kubeconfigContent(credentialsId: env.KUBECONFIG_CREDENTIALS_ID, variable: 'KUBECONFIG_CONTENT')]) {
+                        sh '''
+                            #!/bin/bash
+                            echo "$KUBECONFIG_CONTENT" > kubeconfig
+                            export KUBECONFIG=./kubeconfig
+                            kubectl apply -f ./app-one/deployment.yaml
+                            kubectl apply -f ./app-two/deployment.yaml
+                            kubectl apply -f ./app-three/deployment.yaml
+                            kubectl apply -f ./ingress/ingress.yaml
+                        '''
                     }
                 }
             }
         }
-    }
-}
+        stage('Verify All Deployments') {
+            steps {
+                script {
+                    withCredentials([kubeconfigContent(credentialsId: env.KUBECONFIG_CREDENTIALS_ID, variable: 'KUBECONFIG_CONTENT')]) {
+                        sh '''
+                            #!/bin/bash
+                            echo "$KUBECONFIG_CONTENT" > kubeconfig
+                            export KUBECONFIG=./kubeconfig
+                            kubectl get deployments
+                            kubectl get services
+                            kubectl get ingress
+                        '''
+                    }
+                }
+            }
+        }
+    } // This brace closes the 'stages' block
+}     // This final brace closes the 'pipeline' block
