@@ -30,7 +30,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./app-one
-          file: ./app-one/Dockerfile
+          file: ./app-one/.dockerfile
           push: true
           tags: ${{ env.DOCKER_HUB_USERNAME }}/app-one:latest
 
@@ -38,7 +38,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./app-two
-          file: ./app-two/Dockerfile
+          file: ./app-two/.dockerfile
           push: true
           tags: ${{ env.DOCKER_HUB_USERNAME }}/app-two:latest
 
@@ -46,7 +46,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: ./app-three
-          file: ./app-three/Dockerfile
+          file: ./app-three/.dockerfile
           push: true
           tags: ${{ env.DOCKER_HUB_USERNAME }}/app-three:latest
 
