@@ -8,10 +8,9 @@ on:
     branches: [ "main" ]
 
 env:
-  DOCKER_HUB_USERNAME: jeff9x # Your Docker Hub username
+  DOCKER_HUB_USERNAME: jeffare9x # Your Docker Hub username
 
 jobs:
-  # Job 1: Build all Docker images and push them to Docker Hub
   build-and-push:
     runs-on: ubuntu-latest
     steps:
@@ -24,7 +23,9 @@ jobs:
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
+          # CORRECT: Use the environment variable defined above
           username: ${{ env.DOCKER_HUB_USERNAME }}
+          # CORRECT: Reference the secret by its NAME, not its value
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
       - name: Build and push app-one
@@ -33,6 +34,7 @@ jobs:
           context: ./app-one
           file: ./app-one/Dockerfile
           push: true
+          # CORRECT: Use the environment variable for the tag
           tags: ${{ env.DOCKER_HUB_USERNAME }}/app-one:latest
 
       - name: Build and push app-two
@@ -51,10 +53,9 @@ jobs:
           push: true
           tags: ${{ env.DOCKER_HUB_USERNAME }}/app-three:latest
 
-  # Job 2: Deploy applications to Kubernetes
   deploy:
     runs-on: ubuntu-latest
-    needs: build-and-push # This job runs only after 'build-and-push' is successful
+    needs: build-and-push
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -66,20 +67,16 @@ jobs:
 
       - name: Deploy to Kubernetes
         run: |
-          # Write the kubeconfig from secrets to a file
           echo "${{ secrets.KUBECONFIG }}" > kubeconfig
           export KUBECONFIG=./kubeconfig
-
-          # Apply Kubernetes manifests
           kubectl apply -f ./app-one/deployment.yaml
           kubectl apply -f ./app-two/deployment.yaml
           kubectl apply -f ./app-three/deployment.yaml
           kubectl apply -f ./ingress/ingress.yaml
 
-  # Job 3: Verify the deployments
   verify:
     runs-on: ubuntu-latest
-    needs: deploy # This job runs only after 'deploy' is successful
+    needs: deploy
     steps:
       - name: Set up kubectl
         uses: azure/setup-kubectl@v4
@@ -88,14 +85,10 @@ jobs:
           
       - name: Verify Kubernetes Deployments
         run: |
-          # Write the kubeconfig from secrets to a file
           echo "${{ secrets.KUBECONFIG }}" > kubeconfig
           export KUBECONFIG=./kubeconfig
-
           echo "Waiting 15 seconds for resources to be ready..."
           sleep 15
-
-          # Verify the status of Kubernetes resources
           kubectl get deployments
           kubectl get services
           kubectl get ingress
