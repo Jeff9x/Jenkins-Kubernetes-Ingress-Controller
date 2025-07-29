@@ -10,16 +10,17 @@ on:
 
 env:
   DOCKER_HUB_USERNAME: jeffare9x
-  # Define app names in one place for easy maintenance
+  # Define app names here for use in the deploy job.
+  # NOTE: If you add an app here, you must also add it to the build-and-push matrix below.
   APP_NAMES: '["app-one", "app-two", "app-three"]'
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-    # Use a matrix strategy to avoid repeating build steps for each app
     strategy:
       matrix:
-        app: ${{ fromJson(env.APP_NAMES) }}
+        # The list of apps must be defined directly here because the `env` context is not available to the matrix.
+        app: ["app-one", "app-two", "app-three"]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -42,10 +43,6 @@ jobs:
           push: true
           # BEST PRACTICE: Tag with the unique Git SHA for predictable rollbacks
           tags: ${{ env.DOCKER_HUB_USERNAME }}/${{ matrix.app }}:${{ github.sha }}
-          # Also push the latest tag for convenience, but don't use it for deployments
-          # tags: |
-          #   ${{ env.DOCKER_HUB_USERNAME }}/${{ matrix.app }}:${{ github.sha }}
-          #   ${{ env.DOCKER_HUB_USERNAME }}/${{ matrix.app }}:latest
 
   deploy:
     runs-on: ubuntu-latest
