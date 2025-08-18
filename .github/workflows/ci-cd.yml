@@ -16,7 +16,7 @@ env:
 
 jobs:
   build-and-push:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     strategy:
       matrix:
         # The list of apps must be defined directly here because the `env` context is not available to the matrix.
