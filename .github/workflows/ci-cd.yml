@@ -1,115 +1,54 @@
-# .github/workflows/ci-cd.yml
-# This revised workflow includes best practices for robustness and maintainability.
-name: Build, Push, and Deploy to Kubernetes
+name: Automated Deployment to VM
 
+# Trigger this pipeline on every push to the main branch
 on:
   push:
     branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-
-env:
-  DOCKER_HUB_USERNAME: jeffare9x
-  # Define app names here for use in the deploy job.
-  # NOTE: If you add an app here, you must also add it to the build-and-push matrix below.
-  APP_NAMES: '["app-one", "app-two", "app-three"]'
 
 jobs:
-  build-and-push:
+  build-and-deploy:
+    # Tell GitHub to run this job on your VM
     runs-on: self-hosted
-    strategy:
-      matrix:
-        # The list of apps must be defined directly here because the `env` context is not available to the matrix.
-        app: ["app-one", "app-two", "app-three"]
+
     steps:
-      - name: Checkout Code
+      - name: 1. Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Docker Hub
+      - name: 2. Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: ${{ env.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and push ${{ matrix.app }}
+      - name: 3. Build and Push Docker Image
         uses: docker/build-push-action@v5
         with:
-          context: ./${{ matrix.app }}
-          # Assuming each app has a file named '.dockerfile' in its directory
-          file: ./${{ matrix.app }}/.dockerfile
+          # Assumes Dockerfile is in the root of the repo
+          context: .
           push: true
-          # BEST PRACTICE: Tag with the unique Git SHA for predictable rollbacks
-          tags: ${{ env.DOCKER_HUB_USERNAME }}/${{ matrix.app }}:${{ github.sha }}
+          # Tags the image with the unique Git commit SHA
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/my-app:${{ github.sha }}
 
-  deploy:
-    runs-on: ubuntu-latest
-    # This job depends on all matrix jobs in 'build-and-push' completing successfully
-    needs: build-and-push
-    if: github.ref == 'refs/heads/main' # Only deploy when pushing to the main branch
-    steps:
-      # CRITICAL FIX: You must check out the code to access your YAML files
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: 'latest'
-
-      - name: Update Kubernetes manifests with new image tag
+      - name: 4. Deploy to Kubernetes
         run: |
-          # This loop replaces the image tag in each deployment file
-          # It finds the line 'image:' and replaces the whole line
-          for app in ${{ join(fromJson(env.APP_NAMES), ' ') }}; do
-            sed -i "s|image:.*|image: ${{ env.DOCKER_HUB_USERNAME }}/$app:${{ github.sha }}|g" ./$app/deployment.yaml
-          done
-
-      - name: Deploy to Kubernetes
-        run: |
-          # Exit immediately if a command fails
-          set -e
-          
-          # Set up KUBECONFIG from the secret
-          echo "${{ secrets.KUBECONFIG }}" > kubeconfig
+          echo "Preparing deployment..."
+          # Set up kubectl credentials from the secret
+          echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ./kubeconfig
           export KUBECONFIG=./kubeconfig
-          
-          # Verify connection to the cluster (important for debugging)
-          echo "Verifying cluster connectivity..."
-          kubectl cluster-info
 
-          # Apply all manifests
-          kubectl apply -f ./app-one/deployment.yaml
-          kubectl apply -f ./app-two/deployment.yaml
-          kubectl apply -f ./app-three/deployment.yaml
-          kubectl apply -f ./ingress/ingress.yaml
+          echo "Applying service configuration..."
+          # It's good practice to apply the service file to ensure it's up to date.
+          kubectl apply -f service.yaml
 
-  verify:
-    runs-on: ubuntu-latest
-    needs: deploy
-    if: github.ref == 'refs/heads/main'
-    steps:
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v4
-        with:
-          version: 'latest'
-          
-      - name: Verify Kubernetes Deployments
-        run: |
-          echo "${{ secrets.KUBECONFIG }}" > kubeconfig
-          export KUBECONFIG=./kubeconfig
-          
-          echo "Waiting for deployments to complete..."
-          # BEST PRACTICE: Use 'rollout status' for reliable verification instead of a static sleep
-          kubectl rollout status deployment/app-one-deployment --timeout=120s
-          kubectl rollout status deployment/app-two-deployment --timeout=120s
-          kubectl rollout status deployment/app-three-deployment --timeout=120s
-          
-          echo "--- All deployments successful! ---"
-          
-          echo "--- Getting resource status ---"
-          kubectl get deployments
-          kubectl get services
-          kubectl get ingress
+          echo "Updating deployment with the new image..."
+          # This is the key command. It directly tells Kubernetes to update the image,
+          # which triggers a rolling update and causes the cluster to pull the new image.
+          # It's much safer than using 'sed'.
+
+          # IMPORTANT: Replace 'my-app-deployment' with the name of your deployment
+          # from the metadata.name field in your deployment.yaml file.
+          # IMPORTANT: Replace 'my-app-container' with the name of the container
+          # from the spec.template.spec.containers[0].name field in your deployment.yaml.
+          kubectl set image deployment/my-app-deployment my-app-container=${{ secrets.DOCKERHUB_USERNAME }}/my-app:${{ github.sha }}
+
+          echo "Deployment complete!"
