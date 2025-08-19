@@ -1,54 +1,59 @@
-name: Automated Deployment to VM
+name: Manual Deployment to VM
 
-# Trigger this pipeline on every push to the main branch
+# Define environment variables for the workflow
+env:
+  DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+  IMAGE_NAME: my-app
+  DEPLOYMENT_NAME: my-app-deployment
+  CONTAINER_NAME: my-app-container
+
+# This workflow is triggered manually
 on:
-  push:
-    branches: [ "main" ]
+  workflow_dispatch:
+    # Adds an input field in the GitHub UI
+    inputs:
+      image_tag:
+        description: 'The Docker image tag to deploy (e.g., "latest" or a commit SHA)'
+        required: true
+        default: 'latest'
 
 jobs:
-  build-and-deploy:
-    # Tell GitHub to run this job on your VM
+  deploy:
+    name: 🚀 Deploy to Kubernetes
     runs-on: self-hosted
 
     steps:
       - name: 1. Checkout Code
         uses: actions/checkout@v4
 
-      - name: 2. Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: 3. Build and Push Docker Image
-        uses: docker/build-push-action@v5
-        with:
-          # Assumes Dockerfile is in the root of the repo
-          context: .
-          push: true
-          # Tags the image with the unique Git commit SHA
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/my-app:${{ github.sha }}
-
-      - name: 4. Deploy to Kubernetes
+      - name: 2. Configure kubectl
         run: |
-          echo "Preparing deployment..."
-          # Set up kubectl credentials from the secret
+          echo "Setting up kubectl..."
           echo "${{ secrets.KUBE_CONFIG }}" | base64 -d > ./kubeconfig
           export KUBECONFIG=./kubeconfig
+          echo "✅ kubectl configured."
 
-          echo "Applying service configuration..."
-          # It's good practice to apply the service file to ensure it's up to date.
-          kubectl apply -f service.yaml
+      - name: 3. Update Kubernetes Manifests with Kustomize
+        run: |
+          echo "Updating image tag to: ${{ github.event.inputs.image_tag }}"
+          # Construct the full image name and tag from inputs and secrets
+          FULL_IMAGE_NAME="${{ env.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.event.inputs.image_tag }}"
+          
+          cd k8s/overlays/production
+          kustomize edit set image ${{ env.CONTAINER_NAME }}=${FULL_IMAGE_NAME}
+          echo "✅ Kustomize files updated."
+          cd ../../..
 
-          echo "Updating deployment with the new image..."
-          # This is the key command. It directly tells Kubernetes to update the image,
-          # which triggers a rolling update and causes the cluster to pull the new image.
-          # It's much safer than using 'sed'.
+      - name: 4. Apply New Configuration
+        run: |
+          echo "Applying new configuration to the cluster..."
+          export KUBECONFIG=./kubeconfig
+          kustomize build k8s/overlays/production | kubectl apply -f -
+          echo "✅ Manifests applied."
 
-          # IMPORTANT: Replace 'my-app-deployment' with the name of your deployment
-          # from the metadata.name field in your deployment.yaml file.
-          # IMPORTANT: Replace 'my-app-container' with the name of the container
-          # from the spec.template.spec.containers[0].name field in your deployment.yaml.
-          kubectl set image deployment/my-app-deployment my-app-container=${{ secrets.DOCKERHUB_USERNAME }}/my-app:${{ github.sha }}
-
-          echo "Deployment complete!"
+      - name: 5. Verify Deployment
+        run: |
+          echo "Waiting for deployment to complete..."
+          export KUBECONFIG=./kubeconfig
+          kubectl rollout status deployment/${{ env.DEPLOYMENT_NAME }} --timeout=120s
+          echo "✅ Deployment successfully rolled out!"
