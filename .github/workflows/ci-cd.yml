@@ -32,7 +32,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
-
       # STEP B: Build the image from the Dockerfile and push it to the registry
       - name: 3. Build and Push Docker Image
         uses: docker/build-push-action@v5
@@ -41,8 +40,8 @@ jobs:
           context: ./${{ matrix.app }}
           push: true
           # Tags the image with the app name and commit SHA
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.app }}:${{ github.sha }}
-
+          tags: ghcr.io/FX/${{ matrix.app }}:${{ github.sha }}
+      
       - name: 4. Deploy to Kubernetes
         run: |
           echo "Preparing deployment for ${{ matrix.app }}..."
