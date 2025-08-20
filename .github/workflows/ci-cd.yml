@@ -10,6 +10,10 @@ jobs:
     # The job name now includes the app name from the matrix
     name: Build & Deploy ${{ matrix.app }}
     runs-on: self-hosted
+    permissions:
+     contents: read
+     packages: write
+    
 
     strategy:
       # Define a matrix to run this job for each application
