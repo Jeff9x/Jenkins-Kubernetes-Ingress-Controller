@@ -1,17 +1,37 @@
-# Use the official Long-Term Support (LTS) Jenkins image as a base
-FROM jenkins/jenkins:lts-jdk17
+name: Build Custom Jenkins Image
 
-# Switch to the root user to install packages
-USER root
+# Trigger this workflow on push to main or manually
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'Dockerfile' # Only run if the Dockerfile changes
+  workflow_dispatch: # Allows manual triggering
 
-# Install the Docker CLI
-RUN apt-get update && apt-get install -y lsb-release
-RUN curl -fsSLo /usr/share/keyrings/docker-archive-keyring.asc https://download.docker.com/linux/debian/gpg
-RUN echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.asc] https://download.docker.com/linux/debian $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
-RUN apt-get update && apt-get install -y docker-ce-cli
+jobs:
+  build-and-push-image:
+    name: Build and Push Jenkins Image
+    runs-on: ubuntu-latest # Use a GitHub-hosted runner
 
-# Create the docker group and add the 'jenkins' user to it
-RUN groupadd docker && usermod -aG docker jenkins
+    permissions:
+      contents: read
+      packages: write # Required to push to GHCR
 
-# Switch back to the jenkins user
-USER jenkins
+    steps:
+      - name: 1. Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 2. Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 3. Build and push custom Jenkins image
+        uses: docker/build-push-action@v5
+        with:
+          context: . # Assumes Dockerfile is in the root
+          file: ./Dockerfile # Explicitly points to your Dockerfile
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/custom-jenkins:latest
